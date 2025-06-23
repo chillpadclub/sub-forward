@@ -1,68 +1,95 @@
 <?php
-const TARGET_HOST = 'https://your-new-domain-here.com'; // Write your target host URL here
+const TARGET_HOST = 'https://your-main-subscription-domain-here.com';
+const ERROR_LOG_FILE = __DIR__ . '/errors.log';
 
-// Get the path and query string from the original request
-$requestUri = $_SERVER['REQUEST_URI'];
-
-// Construct the target URL with the new domain
-$targetUrl = TARGET_HOST . $requestUri;
-
-// Initialize a cURL session
-$ch = curl_init($targetUrl);
-
-// Set the cURL options
-curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-curl_setopt($ch, CURLOPT_HEADER, true); // This includes the headers in the output
-curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true); // Follow redirects if necessary
-curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $_SERVER['REQUEST_METHOD']); // Set the request method (GET, POST, etc.)
-curl_setopt($ch, CURLOPT_MAXREDIRS, 10); // Limit the number of redirects to prevent infinite loops
-
-// Forward all incoming request headers to the target URL
-$headers = [];
-
-foreach (getallheaders() as $name => $value) {
-    $headers[] = "$name: $value";
+// Initialize error logging
+function logError($message) {
+    $logMessage = "[" . date('Y-m-d H:i:s') . "] " . $message . "\n";
+    error_log($logMessage, 3, ERROR_LOG_FILE);
 }
 
-$headers[] = 'X-Forwarded-For: ' . $_SERVER['REMOTE_ADDR'];
+try {
+    // Get the full requested URI
+    $requestUri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+    $queryString = $_SERVER['QUERY_STRING'] ? '?'.$_SERVER['QUERY_STRING'] : '';
+    $targetUrl = rtrim(TARGET_HOST, '/') . $requestUri . $queryString;
 
-curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+    // Initialize cURL
+    $ch = curl_init($targetUrl);
+    if ($ch === false) {
+        throw new Exception("Failed to initialize cURL");
+    }
 
-// If the request has a body (e.g., POST), forward it as well
-if ($_SERVER['REQUEST_METHOD'] == 'POST' || $_SERVER['REQUEST_METHOD'] == 'PUT' || $_SERVER['REQUEST_METHOD'] == 'PATCH') {
-    curl_setopt($ch, CURLOPT_POSTFIELDS, file_get_contents('php://input'));
-}
+    // Set cURL options
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HEADER => true,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_CUSTOMREQUEST => $_SERVER['REQUEST_METHOD'],
+        CURLOPT_MAXREDIRS => 10,
+        CURLOPT_SSL_VERIFYPEER => true,
+        CURLOPT_TIMEOUT => 15,
+    ]);
 
-// Execute the request
-$response = curl_exec($ch);
+    // Forward headers
+    $headers = [];
+    foreach (getallheaders() as $name => $value) {
+        if (!in_array(strtolower($name), ['host', 'accept-encoding'])) {
+            $headers[] = "$name: $value";
+        }
+    }
+    $headers[] = 'X-Forwarded-For: ' . $_SERVER['REMOTE_ADDR'];
+    curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
 
-// Check for cURL errors
-if (curl_errno($ch)) {
+    // Forward request body
+    if (in_array($_SERVER['REQUEST_METHOD'], ['POST', 'PUT', 'PATCH'])) {
+        $input = file_get_contents('php://input');
+        if ($input === false) {
+            throw new Exception("Failed to read request body");
+        }
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $input);
+    }
+
+    // Execute request
+    $response = curl_exec($ch);
+    if ($response === false) {
+        throw new Exception("cURL error: " . curl_error($ch));
+    }
+
+    // Process response
+    $headerSize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
+    $responseHeaders = substr($response, 0, $headerSize);
+    $body = substr($response, $headerSize);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    
+    // Forward headers to client
+    $headerLines = explode("\r\n", $responseHeaders);
+    foreach ($headerLines as $headerLine) {
+        if (!empty($headerLine) && !preg_match('/^(Transfer-Encoding|Content-Encoding|Connection):/i', $headerLine)) {
+            header($headerLine);
+        }
+    }
+
+    http_response_code($httpCode);
+    echo $body;
+
+} catch (Exception $e) {
     http_response_code(500);
-    echo "An error occurred while fetching the content.";
-    curl_close($ch);
-    exit;
-}
-
-// Separate the headers and the body
-$headerSize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
-$headerString = substr($response, 0, $headerSize);
-$body = substr($response, $headerSize);
-
-// Get the HTTP response code
-$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-curl_close($ch);
-
-// Forward the response headers to the client
-$headerLines = explode("\r\n", $headerString);
-foreach ($headerLines as $headerLine) {
-    if (!empty($headerLine) && !preg_match('/^Transfer-Encoding:/i', $headerLine) && !preg_match('/^Content-Encoding:/i', $headerLine)) {
-        header($headerLine);
+    header('Content-Type: application/json');
+    echo json_encode(['error' => 'Internal Server Error']);
+    
+    // Log the error with additional context
+    $errorMessage = $e->getMessage();
+    $requestInfo = json_encode([
+        'method' => $_SERVER['REQUEST_METHOD'],
+        'uri' => $_SERVER['REQUEST_URI'],
+        'ip' => $_SERVER['REMOTE_ADDR'],
+        'time' => date('Y-m-d H:i:s')
+    ]);
+    logError("$errorMessage | Request: $requestInfo");
+    
+} finally {
+    if (isset($ch)) {
+        curl_close($ch);
     }
 }
-
-// Set the HTTP response code
-http_response_code($httpCode);
-
-// Output the body content
-echo $body;
