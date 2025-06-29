@@ -26,14 +26,16 @@ This simple PHP script helps users forward their subscription links through anot
 2. Open the `index.php` file and update the following line with your target domain:
 
     ```php
-    const TARGET_HOST = 'https://your-new-domain-here.com'; // Write your target host URL here
+    const TARGET_HOST = 'https://your-main-subscription-domain-here.com';
     ```
 
 3. Create or update the `.htaccess` file in the same directory with the following content:
 
     ```apache
     RewriteEngine On
-    RewriteRule . index.php [L]
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^(.*)$ index.php [L,QSA]
     ```
 
    This ensures that all incoming requests are routed through the `index.php` file.
@@ -62,7 +64,7 @@ This simple PHP script helps users forward their subscription links through anot
    - In your File Manager, open the `index.php` file and update the following line with your target domain:
 
     ```php
-    const TARGET_HOST = 'https://your-new-domain-here.com'; // Write your target host URL here
+    const TARGET_HOST = 'https://your-main-subscription-domain-here.com';
     ```
 
 4. **Create or update the `.htaccess` file**:
@@ -71,7 +73,9 @@ This simple PHP script helps users forward their subscription links through anot
 
     ```apache
     RewriteEngine On
-    RewriteRule . index.php [L]
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^(.*)$ index.php [L,QSA]
     ```
 
    This ensures that all requests are routed to the `index.php` file.
