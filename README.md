@@ -13,6 +13,10 @@ This simple PHP script helps users forward their subscription links through anot
 - Adds `X-Forwarded-For` to preserve client IP address
 - Helps bypass government restrictions or firewalls
 
+### Requirements
+- PHP 7.0+ with cURL extension
+- Web server with URL rewriting support
+
 ## Usage
 
 ### For Users with SSH Access (e.g., VPS or Dedicated Server)
@@ -92,10 +96,21 @@ This simple PHP script helps users forward their subscription links through anot
 - Request headers and bodies are preserved, ensuring that the forwarded request is identical to the original one.
 - By using this technique, users can bypass content filtering and prevent the main server from being detected or blocked by restrictive firewalls.
 
-## Security Considerations
+### Error Handling
+- All errors are logged to `errors.log` in the same directory
+- Includes detailed error context (request method, URI, client IP, timestamp)
+- Returns a 500 error with JSON response on failures
 
-- Ensure SSL verification is enabled in the script (set by default) to prevent man-in-the-middle attacks.
-- It is recommended to use this in a secure environment with proper server-side security configurations.
+### Note on Headers
+- Automatically removes 'Host' and 'Accept-Encoding' headers from forwarded requests
+- Adds 'X-Forwarded-For' with client IP address
+- Filters out certain response headers (Transfer-Encoding, Content-Encoding, Connection)
+
+## Security Considerations
+- SSL verification is enabled by default (CURLOPT_SSL_VERIFYPEER)
+- Request timeout set to 15 seconds (CURLOPT_TIMEOUT)
+- Maximum 10 redirects followed (CURLOPT_MAXREDIRS)
+- Recommended to use HTTPS for both TARGET_HOST and forwarder
 
 ## Disclaimer
 
