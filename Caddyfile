@@ -1,0 +1,10 @@
+https://your-sub-forward-domain-here.com {
+   root * /src
+   php_fastcgi php-sub-forward:9000
+   file_server
+}
+
+:443 {
+    tls internal
+    respond 204
+}

@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  caddy:
+    image: caddy:latest
+    container_name: caddy-sub-forward
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - ./src:/src
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - php
+
+  php:
+    image: php:8.1-fpm
+    container_name: php-sub-forward
+    volumes:
+      - ./src:/src
+
+volumes:
+  caddy_data:
+  caddy_config:
